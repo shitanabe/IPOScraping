@@ -1,7 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
 import datetime, re
-import editcalendar
+import editCalendar
+import utils.fileUtil
 
 target_url = "https://www.sbisec.co.jp/ETGate/?OutSide=on&_ControlID=WPLETmgR001Control&_DataStoreID=DSWPLETmgR001Control&burl=search_domestic&dir=ipo%2F&file=stock_info_ipo.html&cat1=domestic&cat2=ipo&getFlg=on&int_pr1=150313_cmn_gnavi:6_dmenu_04"
 html = requests.get(target_url)
@@ -16,7 +17,8 @@ for div in company_dives:
     company_name = div.find('p', class_='fl01').text
     idx = company_name.find(company_split)
     splited = company_name[:idx]
-    company_list.append(splited)
+  # 会社名の間に全角スペースが存在する場合は半角スペースへ置換
+    company_list.append(splited.replace('\u3000', ' '))
 
 # ブックビル期間取得、配列へ格納
 bookbuild_list = []
@@ -41,9 +43,20 @@ currentDateTime = datetime.datetime.now()
 date = currentDateTime.date()
 year = date.strftime("%Y")
 
+# 登録済みの会社名一覧CSVが存在する場合、一覧をリストで取得
+registed_list = []
+if utils.fileUtil.check_exist(1):
+  registed_lists = utils.fileUtil.read_companyCSV()
+  for ele in registed_lists:
+    registed_list = ele
+
 sbi_list = []
 term_split = '〜'
 for i, summary in enumerate(company_list):
+  # すでにGoogleカレンダー登録済みの会社は登録対象から除外
+  if summary in registed_list:
+    continue
+
   # ブックビル期間は「MM/dd HH:mm〜MM/dd HH:mm」の形式
   # 「〜」の前後を取得、開始日時と終了日時を変数へ格納
   term = bookbuild_list[i]
@@ -52,7 +65,7 @@ for i, summary in enumerate(company_list):
   end = term[idx+1:]
   event= {
     # 予定のタイトル(会社名)
-    'summary': company_list[i],
+    'summary': summary,
     # 予定の開始時刻(ISOフォーマットで指定)
     'start': {
       'dateTime': datetime.datetime.strptime(str(year) + "/" + str(start) + ":00", "%Y/%m/%d %H:%M:%S").isoformat(),
@@ -66,5 +79,11 @@ for i, summary in enumerate(company_list):
   }
   sbi_list.append(event)
 
+# 登録済みデータの書き出し
+utils.fileUtil.create_json(sbi_list)
+
+# 登録済み会社名の書き出し
+utils.fileUtil.create_companyCSV(company_list)
+
 # Googleカレンダー登録用関数呼び出し
-editcalendar.add_schedule(sbi_list)
+editCalendar.add_schedule(sbi_list)
